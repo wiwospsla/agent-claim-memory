@@ -1,5 +1,7 @@
 # agent-claim-memory
 
+> 📖 架构与跨学科方法论总述：[`ARCHITECTURE_OVERVIEW.md`](./ARCHITECTURE_OVERVIEW.md)
+
 ![CI](https://github.com/your-org/agent-claim-memory/actions/workflows/ci.yml/badge.svg)
 ![node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen)
 ![deps](https://img.shields.io/badge/dependencies-zero-blue)
