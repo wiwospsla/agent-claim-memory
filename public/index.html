@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>Agent Claim Memory 审计控制台</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", -apple-system, sans-serif; margin: 0; background: #0f1115; color: #e6e6e6; }
+  header { padding: 12px 20px; background: #161923; border-bottom: 1px solid #2a2f3d; }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 4px 0 0; color: #9aa0ad; font-size: 12px; }
+  main { display: flex; gap: 12px; padding: 12px; height: calc(100vh - 70px); }
+  .col { background: #161923; border: 1px solid #2a2f3d; border-radius: 8px; padding: 12px; overflow-y: auto; }
+  .left { flex: 1; min-width: 320px; }
+  .right { flex: 2; display: flex; flex-direction: column; gap: 10px; }
+  .panel { background: #1b1f2b; border: 1px solid #2a2f3d; border-radius: 6px; padding: 10px; flex: 1; overflow-y: auto; }
+  h2 { font-size: 14px; margin: 0 0 8px; color: #8ecae6; }
+  label { display: block; font-size: 12px; color: #9aa0ad; margin: 8px 0 2px; }
+  input, textarea, select { width: 100%; background: #0f1115; color: #e6e6e6; border: 1px solid #2a2f3d; border-radius: 4px; padding: 6px; font-size: 12px; }
+  textarea { min-height: 60px; resize: vertical; }
+  button { background: #3a6fe0; color: white; border: none; border-radius: 4px; padding: 6px 10px; font-size: 12px; cursor: pointer; margin: 4px 4px 0 0; }
+  button:hover { background: #2a5bc0; }
+  button.danger { background: #b23a3a; }
+  button.ghost { background: #2a2f3d; }
+  .claim-row { border-bottom: 1px solid #2a2f3d; padding: 6px 0; font-size: 12px; }
+  .claim-row .meta { color: #9aa0ad; font-size: 11px; }
+  .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; margin-right: 4px; }
+  .badge.active { background: #2e7d32; }
+  .badge.disputed { background: #b23a3a; }
+  .badge.superseded { background: #6b6b6b; }
+  .badge.unverified { background: #9e7b1f; }
+  .badge.archived { background: #333; }
+  pre { white-space: pre-wrap; word-break: break-all; font-size: 11px; background: #0f1115; padding: 6px; border-radius: 4px; }
+  .verdict { font-size: 14px; padding: 10px; border-radius: 6px; margin-bottom: 8px; }
+  .verdict.healthy { background: #1f3a2a; }
+  .verdict.drifting { background: #3a2f1f; }
+  .verdict.regret_alert { background: #3a1f1f; }
+  .verdict.ready_to_promote { background: #1f2f3a; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Agent Claim Memory — 记忆裁决 / 压缩审计控制台</h1>
+  <p>127.0.0.1:3457 · 工作四维召回：scope × authority × confidence × status（无时间衰减）</p>
+  <button onclick="seedDemo()" style="background:#c0392b; margin-top:6px;">🎬 一键载入踩坑演示剧本（写入独立 demo namespace）</button>
+  <span id="seedStatus" style="font-size:11px; color:#9aa0ad; margin-left:8px;"></span>
+</header>
+<main>
+  <section class="col left">
+    <h2>模拟召回 / 三通道编译</h2>
+    <label>Namespace</label>
+    <input id="ns" value="default" />
+    <label>Task Text</label>
+    <textarea id="taskText" placeholder="任务描述，用于 bm25 匹配"></textarea>
+    <label>Active Files (逗号分隔)</label>
+    <input id="activeFiles" placeholder="src/foo.mjs,src/bar.mjs" />
+    <label>Active Modules (逗号分隔)</label>
+    <input id="activeModules" placeholder="auth,db" />
+    <label>Tool Name</label>
+    <input id="toolName" placeholder="edit" />
+    <button onclick="runRecall()">运行召回</button>
+    <button class="ghost" onclick="runCompile()">分通道编译注入</button>
+
+    <h2 style="margin-top:16px">压缩损失审计</h2>
+    <label>Compaction Summary</label>
+    <textarea id="summaryText" placeholder="粘贴压缩后摘要文本"></textarea>
+    <label>Round At</label>
+    <input id="roundAt" value="1" type="number" />
+    <button onclick="runAudit()">运行压缩审计</button>
+
+    <h2 style="margin-top:16px">提出新结论</h2>
+    <label>Kind</label>
+    <select id="proposeKind">
+      <option>decision</option><option>constraint</option><option>pitfall</option>
+      <option>api_shape</option><option>todo</option><option>hypothesis</option>
+    </select>
+    <label>Claim 文本</label>
+    <input id="proposeClaim" placeholder="一句客观可验证结论" />
+    <label>Scope Files (逗号分隔)</label>
+    <input id="proposeFiles" placeholder="src/foo.mjs" />
+    <label>Source Ref</label>
+    <input id="proposeSourceRef" placeholder="user message / tool run id" />
+    <button onclick="runPropose()">提出结论</button>
+  </section>
+
+  <section class="col right">
+    <div class="panel" style="flex:0 0 auto">
+      <h2>① 顶层大结论 + 本轮召回透视</h2>
+      <div id="verdictBox">加载中...</div>
+      <div id="recallBox"></div>
+    </div>
+    <div class="panel">
+      <h2>② 结论裁决账本</h2>
+      <div style="margin-bottom:6px">
+        <button class="ghost" onclick="refreshLedger()">刷新</button>
+      </div>
+      <div id="ledgerBox"></div>
+    </div>
+    <div class="panel">
+      <h2>③ 压缩流体检面板</h2>
+      <button class="ghost" onclick="refreshFlow()">刷新</button>
+      <div id="flowBox"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+function ns() { return document.getElementById('ns').value || 'default'; }
+function splitCsv(v) { return v.split(',').map(s => s.trim()).filter(Boolean); }
+
+async function post(url, body) {
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  return res.json();
+}
+async function get(url) {
+  const res = await fetch(url);
+  return res.json();
+}
+
+async function runRecall() {
+  const body = {
+    namespace: ns(),
+    taskText: document.getElementById('taskText').value,
+    activeFiles: splitCsv(document.getElementById('activeFiles').value),
+    activeModules: splitCsv(document.getElementById('activeModules').value),
+    toolName: document.getElementById('toolName').value || null,
+  };
+  const r = await post('/api/recall', body);
+  document.getElementById('recallBox').innerHTML = '<h3>召回结果</h3><pre>' + JSON.stringify(r, null, 2) + '</pre>';
+}
+
+async function runCompile() {
+  const body = {
+    namespace: ns(),
+    taskText: document.getElementById('taskText').value,
+    activeFiles: splitCsv(document.getElementById('activeFiles').value),
+    activeModules: splitCsv(document.getElementById('activeModules').value),
+    toolName: document.getElementById('toolName').value || null,
+  };
+  const r = await post('/api/compile', body);
+  const savings = r.debugTrace.savings;
+  document.getElementById('recallBox').innerHTML =
+    '<h3>三通道编译结果 (Token 节省 ' + (savings.token_savings_ratio * 100).toFixed(1) + '%)</h3><pre>' + JSON.stringify(r, null, 2) + '</pre>';
+}
+
+async function seedDemo() {
+  document.getElementById('seedStatus').textContent = '载入中...';
+  const r = await post('/api/demo/seed', {});
+  document.getElementById('seedStatus').textContent =
+    '已写入 namespace=demo，最终大结论=' + r.measurements.final_verdict_state +
+    '，Token 节省率=' + (r.measurements.round7_token_savings_ratio * 100).toFixed(1) + '%';
+  document.getElementById('ns').value = 'demo';
+  refreshVerdict();
+  refreshLedger();
+  refreshFlow();
+}
+
+async function runAudit() {
+  const body = {
+    namespace: ns(),
+    summaryText: document.getElementById('summaryText').value,
+    roundAt: Number(document.getElementById('roundAt').value) || 0,
+    activeFiles: splitCsv(document.getElementById('activeFiles').value),
+  };
+  const r = await post('/api/audit-compaction', body);
+  document.getElementById('recallBox').innerHTML = '<h3>压缩审计结果</h3><pre>' + JSON.stringify(r, null, 2) + '</pre>';
+  refreshFlow();
+  refreshVerdict();
+}
+
+async function runPropose() {
+  const body = {
+    namespace: ns(),
+    kind: document.getElementById('proposeKind').value,
+    claim: document.getElementById('proposeClaim').value,
+    scope: { files: splitCsv(document.getElementById('proposeFiles').value), modules: [], tags: [] },
+    source: { kind: 'user', ref: document.getElementById('proposeSourceRef').value || 'console-manual' },
+  };
+  await post('/api/propose', body);
+  refreshLedger();
+}
+
+async function refreshVerdict() {
+  const r = await get('/api/verdict?namespace=' + encodeURIComponent(ns()));
+  document.getElementById('verdictBox').innerHTML =
+    '<div class="verdict ' + r.state + '"><b>' + r.state + '</b><br>' + r.headline + '</div>' +
+    (r.suggested_actions && r.suggested_actions.length ? '<ul>' + r.suggested_actions.map(a => '<li>' + a + '</li>').join('') + '</ul>' : '');
+}
+
+async function refreshLedger() {
+  const r = await get('/api/inspect?namespace=' + encodeURIComponent(ns()));
+  let html = '';
+  for (const status of ['active', 'disputed', 'superseded', 'unverified', 'archived']) {
+    const list = r.grouped[status] || [];
+    if (!list.length) continue;
+    html += '<h3>' + status + ' (' + list.length + ')</h3>';
+    for (const c of list) {
+      html += '<div class="claim-row">' +
+        '<span class="badge ' + c.status + '">' + c.status + '</span>' +
+        '<b>#' + c.block_id + '</b> [' + c.kind + '] ' + c.claim +
+        '<div class="meta">authority=' + c.authority + ' confidence=' + c.confidence.toFixed(2) +
+        ' utility=' + c.utility.toFixed(2) + ' source=' + c.source.ref + '</div>' +
+        '<button onclick="verifyBlock(\\'' + c.block_id + '\\', true)">验证有效(+)</button>' +
+        '<button class="danger" onclick="verifyBlock(\\'' + c.block_id + '\\', false)">打脸(-)</button>' +
+        '<button class="ghost" onclick="pinBlock(\\'' + c.block_id + '\\')">置顶</button>' +
+        '<button class="ghost" onclick="archiveBlock(\\'' + c.block_id + '\\')">归档</button>' +
+        (c.status === 'superseded' ? '<button onclick="restoreBlock(\\'' + c.block_id + '\\', \\'replace_current\\')">翻案(反覆盖)</button>' +
+          '<button class="ghost" onclick="restoreBlock(\\'' + c.block_id + '\\', \\'mark_disputed\\')">翻案(标争议)</button>' : '') +
+        (c.status === 'archived' ? '<button onclick="restoreBlock(\\'' + c.block_id + '\\', null)">撤回归档</button>' : '') +
+        '</div>';
+    }
+  }
+  document.getElementById('ledgerBox').innerHTML = html || '暂无结论';
+}
+
+async function verifyBlock(id, ok) {
+  await post('/api/verify', { namespace: ns(), block_id: id, ok, note: 'console action' });
+  refreshLedger(); refreshVerdict();
+}
+async function pinBlock(id) {
+  await post('/api/pin', { namespace: ns(), block_id: id });
+  refreshLedger();
+}
+async function archiveBlock(id) {
+  await post('/api/archive', { namespace: ns(), block_id: id, reason: 'console manual archive' });
+  refreshLedger();
+}
+async function restoreBlock(id, mode) {
+  await post('/api/restore', { namespace: ns(), block_id: id, mode, reason: 'console manual restore' });
+  refreshLedger(); refreshVerdict();
+}
+
+async function refreshFlow() {
+  const r = await get('/api/flow?namespace=' + encodeURIComponent(ns()));
+  document.getElementById('flowBox').innerHTML = '<pre>' + JSON.stringify(r, null, 2) + '</pre>';
+}
+
+refreshVerdict();
+refreshLedger();
+refreshFlow();
+</script>
+</body>
+</html>

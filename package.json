@@ -1,0 +1,19 @@
+{
+  "name": "agent-claim-memory",
+  "version": "1.0.0",
+  "description": "通用 Agent 外置记忆裁决层 + 上下文压缩流审计仪 (zero heavy deps, pure node:http + node:test)",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/claim_memory.test.mjs",
+    "start": "node src/launch.mjs",
+    "server": "node src/server.mjs",
+    "demo": "node src/demo.mjs",
+    "check": "node --check src/schema.mjs && node --check src/store.mjs && node --check src/adjudicator.mjs && node --check src/recall.mjs && node --check src/injector.mjs && node --check src/compaction_flow.mjs && node --check src/stream_verdict.mjs && node --check src/memory_sdk.mjs && node --check src/server.mjs && node --check src/launch.mjs && node --check src/demo.mjs && node --check test/claim_memory.test.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

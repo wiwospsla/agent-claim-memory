@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20.x, 22.x]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Syntax check all .mjs files
+        run: npm run check
+      - name: Run unit tests (0 API calls)
+        run: npm test
+      - name: Run workflow replay demo
+        run: npm run demo
+      - name: Confirm no data/ directory leaked
+        run: |
+          if [ -d "data" ]; then
+            echo "ERROR: data/ directory leaked after tests/demo"
+            ls -la data
+            exit 1
+          fi
+          echo "data/ clean"

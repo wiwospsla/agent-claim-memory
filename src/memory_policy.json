@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "description": "Static policy knobs for prompt-injection compilation. No persona, no emotional tone settings, no time-decay knobs by design.",
+  "channels": {
+    "compiled_constraints": {
+      "max_items": 3,
+      "max_chars_per_item": 30,
+      "eligible_kinds": ["constraint"],
+      "min_authority": "tool_verified",
+      "min_confidence": 0.6
+    },
+    "context_claims": {
+      "max_items": 6,
+      "eligible_kinds": ["decision", "api_shape", "todo"],
+      "format": "[#{block_id} | {authority} | {source_ref}] {claim}"
+    },
+    "pitfall_warnings": {
+      "max_items": 4,
+      "eligible_kinds": ["pitfall"],
+      "priority": "high"
+    }
+  },
+  "recall_defaults": {
+    "topK": 5
+  }
+}
